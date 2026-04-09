@@ -1,0 +1,66 @@
+@page "/admin/api-keys"
+@using RVM.AuthForge.Domain.Entities
+@using RVM.AuthForge.Infrastructure.Services
+@inject IApiKeyService ApiKeyService
+
+<h1>API Keys</h1>
+
+<div class="add-form">
+    <input @bind="_appId" placeholder="App ID" class="input-sm" />
+    <input @bind="_name" placeholder="Key Name" class="input-sm" />
+    <button class="btn-sm btn-primary" @onclick="Create">Create</button>
+</div>
+
+@if (!string.IsNullOrEmpty(_newKey))
+{
+    <div class="alert alert-success">
+        <strong>New API Key (copy now, shown only once):</strong>
+        <code>@_newKey</code>
+    </div>
+}
+
+<table class="data-table">
+    <thead><tr><th>App ID</th><th>Name</th><th>Prefix</th><th>Active</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
+        @foreach (var key in _keys)
+        {
+            <tr>
+                <td>@key.AppId</td>
+                <td>@key.Name</td>
+                <td><code>@key.KeyPrefix...</code></td>
+                <td><span class="@(key.Active ? "status-active" : "status-inactive")">@(key.Active ? "Active" : "Revoked")</span></td>
+                <td>@key.CreatedAt.ToString("g")</td>
+                <td>
+                    @if (key.Active)
+                    {
+                        <button class="btn-sm btn-danger" @onclick="() => Revoke(key.Id)">Revoke</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<ApplicationApiKey> _keys = [];
+    private string _appId = "", _name = "", _newKey = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load() => _keys = await ApiKeyService.ListAsync();
+
+    private async Task Create()
+    {
+        if (string.IsNullOrWhiteSpace(_appId) || string.IsNullOrWhiteSpace(_name)) return;
+        var (_, plainKey) = await ApiKeyService.CreateAsync(_appId, _name);
+        _newKey = plainKey;
+        _appId = ""; _name = "";
+        await Load();
+    }
+
+    private async Task Revoke(Guid id)
+    {
+        await ApiKeyService.RevokeAsync(id);
+        await Load();
+    }
+}

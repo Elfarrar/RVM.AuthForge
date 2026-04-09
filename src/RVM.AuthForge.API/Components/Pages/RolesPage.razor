@@ -1,0 +1,52 @@
+@page "/admin/roles"
+@using RVM.AuthForge.Domain.Entities
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject RoleManager<ApplicationRole> RoleManager
+
+<h1>Roles</h1>
+
+<div class="add-form">
+    <input @bind="_name" placeholder="Role name" class="input-sm" />
+    <input @bind="_description" placeholder="Description" class="input-sm" style="width:300px" />
+    <button class="btn-sm btn-primary" @onclick="CreateRole">Create</button>
+</div>
+
+<table class="data-table">
+    <thead><tr><th>Name</th><th>Description</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
+        @foreach (var role in _roles)
+        {
+            <tr>
+                <td>@role.Name</td>
+                <td>@role.Description</td>
+                <td>@role.CreatedAt.ToString("d")</td>
+                <td><button class="btn-sm btn-danger" @onclick="() => Delete(role)">Delete</button></td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<ApplicationRole> _roles = [];
+    private string _name = "", _description = "";
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load() =>
+        _roles = await RoleManager.Roles.OrderBy(r => r.Name).ToListAsync();
+
+    private async Task CreateRole()
+    {
+        if (string.IsNullOrWhiteSpace(_name)) return;
+        await RoleManager.CreateAsync(new ApplicationRole { Name = _name, Description = _description });
+        _name = ""; _description = "";
+        await Load();
+    }
+
+    private async Task Delete(ApplicationRole role)
+    {
+        await RoleManager.DeleteAsync(role);
+        await Load();
+    }
+}

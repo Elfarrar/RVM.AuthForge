@@ -1,0 +1,83 @@
+@page "/admin/users"
+@using RVM.AuthForge.Domain.Entities
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Nav
+
+<h1>Users</h1>
+
+<div class="search-bar">
+    <input @bind="_search" @bind:event="oninput" placeholder="Search by name or email..." class="input-search" />
+</div>
+
+<table class="data-table">
+    <thead><tr><th>Name</th><th>Email</th><th>Active</th><th>2FA</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
+        @foreach (var user in _users)
+        {
+            <tr>
+                <td>@user.FullName</td>
+                <td>@user.Email</td>
+                <td><span class="@(user.Active ? "status-active" : "status-inactive")">@(user.Active ? "Yes" : "No")</span></td>
+                <td>@(user.TwoFactorEnabled ? "Yes" : "No")</td>
+                <td>@user.CreatedAt.ToString("d")</td>
+                <td>
+                    <button class="btn-sm" @onclick="() => GoToUser(user.Id)">Details</button>
+                    @if (user.LockoutEnd > DateTimeOffset.UtcNow)
+                    {
+                        <button class="btn-sm btn-success" @onclick="() => Unlock(user)">Unlock</button>
+                    }
+                    else
+                    {
+                        <button class="btn-sm btn-danger" @onclick="() => Lock(user)">Lock</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="pagination">
+    <button class="btn-sm" disabled="@(_page <= 1)" @onclick="() => LoadPage(_page - 1)">Prev</button>
+    <span>Page @_page</span>
+    <button class="btn-sm" disabled="@(_users.Count < _pageSize)" @onclick="() => LoadPage(_page + 1)">Next</button>
+</div>
+
+@code {
+    private List<ApplicationUser> _users = [];
+    private string _search = "";
+    private int _page = 1;
+    private const int _pageSize = 20;
+
+    protected override async Task OnInitializedAsync() => await LoadPage(1);
+
+    private async Task LoadPage(int page)
+    {
+        _page = page;
+        var query = UserManager.Users.AsQueryable();
+        if (!string.IsNullOrEmpty(_search))
+            query = query.Where(u => u.Email!.Contains(_search) || u.FullName.Contains(_search));
+
+        _users = await query
+            .OrderBy(u => u.CreatedAt)
+            .Skip((_page - 1) * _pageSize)
+            .Take(_pageSize)
+            .ToListAsync();
+    }
+
+    private async Task Lock(ApplicationUser user)
+    {
+        await UserManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+        await LoadPage(_page);
+    }
+
+    private void GoToUser(Guid id) => Nav.NavigateTo($"admin/users/{id}");
+
+    private async Task Unlock(ApplicationUser user)
+    {
+        await UserManager.SetLockoutEndDateAsync(user, null);
+        await UserManager.ResetAccessFailedCountAsync(user);
+        await LoadPage(_page);
+    }
+}

@@ -1,0 +1,21 @@
+@inherits LayoutComponentBase
+
+<div class="app-layout">
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h2>RVM.AuthForge</h2>
+            <span class="subtitle">Admin Panel</span>
+        </div>
+        <ul class="nav-list">
+            <li><NavLink href="admin" Match="NavLinkMatch.All">Dashboard</NavLink></li>
+            <li><NavLink href="admin/users">Users</NavLink></li>
+            <li><NavLink href="admin/roles">Roles</NavLink></li>
+            <li><NavLink href="admin/clients">OAuth Clients</NavLink></li>
+            <li><NavLink href="admin/api-keys">API Keys</NavLink></li>
+            <li><NavLink href="admin/audit">Audit Log</NavLink></li>
+        </ul>
+    </nav>
+    <main class="main-content">
+        @Body
+    </main>
+</div>

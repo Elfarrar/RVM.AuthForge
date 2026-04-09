@@ -1,0 +1,67 @@
+@page "/admin"
+@using RVM.AuthForge.Domain.Entities
+@using RVM.AuthForge.Infrastructure.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject UserManager<ApplicationUser> UserManager
+@inject IAuditLogService AuditLog
+
+<h1>Dashboard</h1>
+
+@if (_loaded)
+{
+    <div class="stats-grid">
+        <div class="stat-card">
+            <span class="stat-value">@_totalUsers</span>
+            <span class="stat-label">Total Users</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">@_activeUsers</span>
+            <span class="stat-label">Active Users</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">@_twoFactorUsers</span>
+            <span class="stat-label">2FA Enabled</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">@_recentAudit</span>
+            <span class="stat-label">Events (24h)</span>
+        </div>
+    </div>
+
+    <h2>Recent Activity</h2>
+    <table class="data-table">
+        <thead><tr><th>Time</th><th>Action</th><th>User</th><th>IP</th></tr></thead>
+        <tbody>
+            @foreach (var entry in _recentEntries)
+            {
+                <tr>
+                    <td>@entry.CreatedAt.ToString("g")</td>
+                    <td><span class="badge">@entry.Action</span></td>
+                    <td>@entry.UserEmail</td>
+                    <td>@entry.IpAddress</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <div class="loading">Loading dashboard...</div>
+}
+
+@code {
+    private int _totalUsers, _activeUsers, _twoFactorUsers, _recentAudit;
+    private List<AuditLogEntry> _recentEntries = [];
+    private bool _loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _totalUsers = await UserManager.Users.CountAsync();
+        _activeUsers = await UserManager.Users.CountAsync(u => u.Active);
+        _twoFactorUsers = await UserManager.Users.CountAsync(u => u.TwoFactorEnabled);
+        _recentAudit = await AuditLog.CountAsync(from: DateTime.UtcNow.AddDays(-1));
+        _recentEntries = await AuditLog.GetEntriesAsync(page: 1, pageSize: 10);
+        _loaded = true;
+    }
+}

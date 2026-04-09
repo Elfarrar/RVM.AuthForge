@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RVM.AuthForge.Domain/RVM.AuthForge.Domain.csproj" />
+    <Project Path="src/RVM.AuthForge.Infrastructure/RVM.AuthForge.Infrastructure.csproj" />
+    <Project Path="src/RVM.AuthForge.API/RVM.AuthForge.API.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/RVM.AuthForge.Tests/RVM.AuthForge.Tests.csproj" />
+  </Folder>
+</Solution>

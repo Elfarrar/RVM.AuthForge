@@ -1,0 +1,79 @@
+@page "/admin/clients"
+@using OpenIddict.Abstractions
+@inject IOpenIddictApplicationManager ClientManager
+
+<h1>OAuth Clients</h1>
+
+<div class="add-form">
+    <input @bind="_clientId" placeholder="Client ID" class="input-sm" />
+    <input @bind="_displayName" placeholder="Display Name" class="input-sm" />
+    <input @bind="_redirectUri" placeholder="Redirect URI" class="input-sm" style="width:300px" />
+    <label class="checkbox-label"><input type="checkbox" @bind="_confidential" /> Confidential</label>
+    @if (_confidential)
+    {
+        <input @bind="_secret" placeholder="Client Secret" class="input-sm" />
+    }
+    <button class="btn-sm btn-primary" @onclick="CreateClient">Create</button>
+</div>
+
+<table class="data-table">
+    <thead><tr><th>Client ID</th><th>Display Name</th><th>Type</th></tr></thead>
+    <tbody>
+        @foreach (var client in _clients)
+        {
+            <tr>
+                <td>@client.ClientId</td>
+                <td>@client.DisplayName</td>
+                <td>@client.ClientType</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private record ClientInfo(string? ClientId, string? DisplayName, string? ClientType);
+    private List<ClientInfo> _clients = [];
+    private string _clientId = "", _displayName = "", _redirectUri = "", _secret = "";
+    private bool _confidential;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _clients = [];
+        await foreach (var client in ClientManager.ListAsync())
+        {
+            _clients.Add(new ClientInfo(
+                await ClientManager.GetClientIdAsync(client),
+                await ClientManager.GetDisplayNameAsync(client),
+                await ClientManager.GetClientTypeAsync(client)));
+        }
+    }
+
+    private async Task CreateClient()
+    {
+        if (string.IsNullOrWhiteSpace(_clientId)) return;
+
+        var descriptor = new OpenIddictApplicationDescriptor
+        {
+            ClientId = _clientId,
+            DisplayName = _displayName,
+            ClientType = _confidential
+                ? OpenIddictConstants.ClientTypes.Confidential
+                : OpenIddictConstants.ClientTypes.Public,
+            ClientSecret = _confidential ? _secret : null
+        };
+
+        if (!string.IsNullOrWhiteSpace(_redirectUri))
+            descriptor.RedirectUris.Add(new Uri(_redirectUri));
+
+        descriptor.Permissions.Add(OpenIddictConstants.Permissions.Endpoints.Authorization);
+        descriptor.Permissions.Add(OpenIddictConstants.Permissions.Endpoints.Token);
+        descriptor.Permissions.Add(OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode);
+        descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.Code);
+
+        await ClientManager.CreateAsync(descriptor);
+        _clientId = ""; _displayName = ""; _redirectUri = ""; _secret = "";
+        await Load();
+    }
+}

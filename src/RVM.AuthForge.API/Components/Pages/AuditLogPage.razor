@@ -1,0 +1,63 @@
+@page "/admin/audit"
+@using RVM.AuthForge.Domain.Entities
+@using RVM.AuthForge.Domain.Enums
+@using RVM.AuthForge.Infrastructure.Services
+@inject IAuditLogService AuditLog
+
+<h1>Audit Log</h1>
+
+<div class="filter-bar">
+    <select @bind="_selectedAction" class="input-sm">
+        <option value="">All Actions</option>
+        @foreach (var action in Enum.GetValues<AuditAction>())
+        {
+            <option value="@action">@action</option>
+        }
+    </select>
+    <input type="text" @bind="_userId" placeholder="User ID" class="input-sm" />
+    <input type="date" @bind="_from" class="input-sm" />
+    <input type="date" @bind="_to" class="input-sm" />
+    <button class="btn-sm btn-primary" @onclick="() => LoadPage(1)">Filter</button>
+</div>
+
+<table class="data-table">
+    <thead><tr><th>Time</th><th>Action</th><th>User</th><th>IP</th><th>Agent</th><th>Details</th></tr></thead>
+    <tbody>
+        @foreach (var entry in _entries)
+        {
+            <tr>
+                <td>@entry.CreatedAt.ToString("g")</td>
+                <td><span class="badge">@entry.Action</span></td>
+                <td>@entry.UserEmail</td>
+                <td>@entry.IpAddress</td>
+                <td class="truncate">@entry.UserAgent</td>
+                <td class="truncate">@entry.Details</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<div class="pagination">
+    <button class="btn-sm" disabled="@(_page <= 1)" @onclick="() => LoadPage(_page - 1)">Prev</button>
+    <span>Page @_page of @((_total + _pageSize - 1) / _pageSize)</span>
+    <button class="btn-sm" disabled="@(_entries.Count < _pageSize)" @onclick="() => LoadPage(_page + 1)">Next</button>
+</div>
+
+@code {
+    private List<AuditLogEntry> _entries = [];
+    private int _page = 1, _total;
+    private const int _pageSize = 30;
+    private string _selectedAction = "", _userId = "";
+    private DateTime? _from, _to;
+
+    protected override async Task OnInitializedAsync() => await LoadPage(1);
+
+    private async Task LoadPage(int page)
+    {
+        _page = page;
+        AuditAction? action = Enum.TryParse<AuditAction>(_selectedAction, out var a) ? a : null;
+        var userId = string.IsNullOrWhiteSpace(_userId) ? null : _userId;
+        _entries = await AuditLog.GetEntriesAsync(action, userId, _from, _to, _page, _pageSize);
+        _total = await AuditLog.CountAsync(action, userId, _from, _to);
+    }
+}

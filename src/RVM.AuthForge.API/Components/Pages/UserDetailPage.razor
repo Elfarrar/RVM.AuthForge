@@ -1,0 +1,91 @@
+@page "/admin/users/{UserId:guid}"
+@using RVM.AuthForge.Domain.Entities
+@using RVM.AuthForge.Infrastructure.Services
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject IAuditLogService AuditLog
+
+<h1>User Details</h1>
+
+@if (_user is null)
+{
+    <div class="loading">Loading...</div>
+}
+else
+{
+    <div class="detail-card">
+        <div class="detail-row"><strong>Name:</strong> @_user.FullName</div>
+        <div class="detail-row"><strong>Email:</strong> @_user.Email</div>
+        <div class="detail-row"><strong>Active:</strong> @(_user.Active ? "Yes" : "No")</div>
+        <div class="detail-row"><strong>Email Confirmed:</strong> @(_user.EmailConfirmed ? "Yes" : "No")</div>
+        <div class="detail-row"><strong>2FA:</strong> @(_user.TwoFactorEnabled ? "Enabled" : "Disabled")</div>
+        <div class="detail-row"><strong>Created:</strong> @_user.CreatedAt.ToString("g")</div>
+        <div class="detail-row"><strong>Failed Logins:</strong> @_user.AccessFailedCount</div>
+        @if (_user.LockoutEnd is not null)
+        {
+            <div class="detail-row"><strong>Locked Until:</strong> @_user.LockoutEnd.Value.ToString("g")</div>
+        }
+    </div>
+
+    <h2>Roles</h2>
+    <div class="role-list">
+        @foreach (var role in _roles)
+        {
+            <span class="badge">@role <button class="btn-remove" @onclick="() => RemoveRole(role)">x</button></span>
+        }
+    </div>
+    <div class="add-role">
+        <input @bind="_newRole" placeholder="Role name" class="input-sm" />
+        <button class="btn-sm btn-primary" @onclick="AddRole">Add Role</button>
+    </div>
+
+    <h2>Recent Activity</h2>
+    <table class="data-table">
+        <thead><tr><th>Time</th><th>Action</th><th>IP</th><th>Details</th></tr></thead>
+        <tbody>
+            @foreach (var entry in _auditEntries)
+            {
+                <tr>
+                    <td>@entry.CreatedAt.ToString("g")</td>
+                    <td><span class="badge">@entry.Action</span></td>
+                    <td>@entry.IpAddress</td>
+                    <td>@entry.Details</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter] public Guid UserId { get; set; }
+
+    private ApplicationUser? _user;
+    private IList<string> _roles = [];
+    private List<AuditLogEntry> _auditEntries = [];
+    private string _newRole = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserManager.FindByIdAsync(UserId.ToString());
+        if (_user is not null)
+        {
+            _roles = await UserManager.GetRolesAsync(_user);
+            _auditEntries = await AuditLog.GetEntriesAsync(userId: UserId.ToString(), pageSize: 20);
+        }
+    }
+
+    private async Task AddRole()
+    {
+        if (_user is null || string.IsNullOrWhiteSpace(_newRole)) return;
+        await UserManager.AddToRoleAsync(_user, _newRole);
+        _roles = await UserManager.GetRolesAsync(_user);
+        _newRole = "";
+    }
+
+    private async Task RemoveRole(string role)
+    {
+        if (_user is null) return;
+        await UserManager.RemoveFromRoleAsync(_user, role);
+        _roles = await UserManager.GetRolesAsync(_user);
+    }
+}
