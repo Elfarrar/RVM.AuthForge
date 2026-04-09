@@ -1,3 +1,5 @@
+*[English](README.en.md) | **Português***
+
 # RVM.AuthForge
 
 Plataforma de Identity & Access Management construida com ASP.NET Core, OpenIddict e PostgreSQL.
