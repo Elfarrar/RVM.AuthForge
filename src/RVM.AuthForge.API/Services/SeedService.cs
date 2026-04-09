@@ -12,7 +12,7 @@ public class SeedService(IServiceProvider services, IConfiguration config) : IHo
     {
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuthForgeDbContext>();
-        await db.Database.MigrateAsync(ct);
+        await db.Database.EnsureCreatedAsync(ct);
 
         await SeedRolesAsync(scope);
         await SeedAdminUserAsync(scope);
