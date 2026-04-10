@@ -67,6 +67,7 @@ public class AuthorizationController(
     }
 
     [HttpPost("~/connect/token")]
+    [HttpPost("~/api/internal/auth/phone-login")]
     public async Task<IActionResult> Exchange()
     {
         var request = HttpContext.GetOpenIddictServerRequest()
