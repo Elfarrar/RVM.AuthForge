@@ -4,6 +4,7 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
 using static OpenIddict.Abstractions.OpenIddictConstants;
@@ -13,7 +14,9 @@ namespace RVM.AuthForge.API.Controllers;
 [ApiController]
 public class AuthorizationController(
     SignInManager<ApplicationUser> signInManager,
-    UserManager<ApplicationUser> userManager) : ControllerBase
+    UserManager<ApplicationUser> userManager,
+    IOpenIddictApplicationManager applicationManager,
+    IConfiguration configuration) : ControllerBase
 {
     [HttpGet("~/connect/authorize")]
     [HttpPost("~/connect/authorize")]
@@ -117,6 +120,93 @@ public class AuthorizationController(
             return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }
 
+        if (request.GrantType == "phone_login")
+        {
+            var apiKey = Request.Headers["X-RVM-Internal-Key"].ToString();
+            var expectedKey = configuration["InternalAuth:ApiKey"] ?? "";
+            if (string.IsNullOrWhiteSpace(apiKey) || apiKey != expectedKey)
+            {
+                return Forbid(
+                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                    properties: new AuthenticationProperties(new Dictionary<string, string?>
+                    {
+                        [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidClient,
+                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "Invalid API key."
+                    }));
+            }
+
+            var clientId = request.ClientId;
+            var clientSecret = request.ClientSecret;
+
+            var app = await applicationManager.FindByClientIdAsync(clientId!);
+            if (app is null || !await applicationManager.ValidateClientSecretAsync(app, clientSecret!))
+            {
+                return Forbid(
+                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                    properties: new AuthenticationProperties(new Dictionary<string, string?>
+                    {
+                        [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidClient,
+                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "Invalid client credentials."
+                    }));
+            }
+
+            var phone = request["phone"]?.ToString();
+            if (string.IsNullOrWhiteSpace(phone))
+            {
+                return BadRequest(new { error = "invalid_phone" });
+            }
+
+            var normalizedPhone = new string(phone.Where(char.IsDigit).ToArray());
+            var users = await userManager.Users
+                .Where(u => u.PhoneNumber != null && u.PhoneNumber.Contains(normalizedPhone))
+                .ToListAsync();
+
+            if (users.Count == 0)
+            {
+                return NotFound(new { error = "user_not_found" });
+            }
+
+            if (users.Count > 1)
+            {
+                return Conflict(new { error = "multiple_users_with_same_phone" });
+            }
+
+            var user = users[0];
+            if (!user.Active)
+            {
+                return Forbid(
+                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                    properties: new AuthenticationProperties(new Dictionary<string, string?>
+                    {
+                        [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidGrant,
+                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The user is inactive."
+                    }));
+            }
+
+            var phoneClaims = new List<Claim>
+            {
+                new(Claims.Subject, user.Id.ToString()),
+                new(Claims.Email, user.Email ?? ""),
+                new(Claims.Name, user.FullName),
+                new("phone_number", user.PhoneNumber ?? normalizedPhone)
+            };
+
+            var roles = await userManager.GetRolesAsync(user);
+            foreach (var role in roles)
+                phoneClaims.Add(new Claim(Claims.Role, role));
+
+            var phoneIdentity = new ClaimsIdentity(phoneClaims, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+            var phonePrincipal = new ClaimsPrincipal(phoneIdentity);
+
+            phonePrincipal.SetScopes(request.GetScopes());
+            phonePrincipal.SetResources("authforge-api");
+
+            foreach (var claim in phonePrincipal.Claims)
+                claim.SetDestinations(GetDestinations(claim, phonePrincipal));
+
+            return SignIn(phonePrincipal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        }
+
         throw new InvalidOperationException("The specified grant type is not supported.");
     }
 
@@ -135,6 +225,13 @@ public class AuthorizationController(
             [Claims.Name] = user.FullName,
             [Claims.Email] = user.Email!
         };
+
+        if (!string.IsNullOrWhiteSpace(user.PhoneNumber))
+            claims["phone_number"] = user.PhoneNumber;
+
+        var roles = await userManager.GetRolesAsync(user);
+        if (roles.Count > 0)
+            claims[Claims.Role] = roles.Count == 1 ? (object)roles[0] : roles;
 
         return Ok(claims);
     }

@@ -36,8 +36,9 @@ public class SeedService(IServiceProvider services, IConfiguration config) : IHo
     private async Task SeedAdminUserAsync(IServiceScope scope)
     {
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        var adminEmail = config["Admin:Email"] ?? "admin@authforge.dev";
-        var adminPassword = config["Admin:Password"] ?? "Admin123!";
+        var adminEmail = config["Seed:AdminEmail"] ?? config["Admin:Email"] ?? "admin@authforge.dev";
+        var adminPassword = config["Seed:AdminPassword"] ?? config["Admin:Password"] ?? "Admin123!";
+        var adminFullName = config["Seed:AdminFullName"] ?? "System Administrator";
 
         if (await userManager.FindByEmailAsync(adminEmail) is not null) return;
 
@@ -45,7 +46,7 @@ public class SeedService(IServiceProvider services, IConfiguration config) : IHo
         {
             UserName = adminEmail,
             Email = adminEmail,
-            FullName = "System Administrator",
+            FullName = adminFullName,
             EmailConfirmed = true
         };
 
@@ -53,7 +54,7 @@ public class SeedService(IServiceProvider services, IConfiguration config) : IHo
         await userManager.AddToRoleAsync(admin, "Admin");
     }
 
-    private static async Task SeedOAuthClientsAsync(IServiceScope scope)
+    private async Task SeedOAuthClientsAsync(IServiceScope scope)
     {
         var manager = scope.ServiceProvider.GetRequiredService<IOpenIddictApplicationManager>();
 
@@ -86,18 +87,51 @@ public class SeedService(IServiceProvider services, IConfiguration config) : IHo
             });
         }
 
-        if (await manager.FindByClientIdAsync("demo-api") is null)
+        // Internal client for service-to-service auth (ERP, Gypsy, etc.)
+        var internalSecret = config["Seed:InternalClientSecret"];
+        if (!string.IsNullOrWhiteSpace(internalSecret) && await manager.FindByClientIdAsync("rvm-internal") is null)
         {
             await manager.CreateAsync(new OpenIddictApplicationDescriptor
             {
-                ClientId = "demo-api",
-                ClientSecret = "demo-api-secret",
-                DisplayName = "Demo API (Confidential)",
+                ClientId = "rvm-internal",
+                ClientSecret = internalSecret,
+                DisplayName = "RVM Internal (Service-to-Service)",
                 ClientType = OpenIddictConstants.ClientTypes.Confidential,
                 Permissions =
                 {
                     OpenIddictConstants.Permissions.Endpoints.Token,
                     OpenIddictConstants.Permissions.GrantTypes.ClientCredentials,
+                    OpenIddictConstants.Permissions.Prefixes.GrantType + "phone_login",
+                    OpenIddictConstants.Permissions.Scopes.Email,
+                    OpenIddictConstants.Permissions.Scopes.Profile,
+                    OpenIddictConstants.Permissions.Scopes.Roles,
+                    OpenIddictConstants.Permissions.Prefixes.Scope + "api",
+                    OpenIddictConstants.Permissions.Prefixes.Scope + "phone"
+                }
+            });
+        }
+
+        // MiniERP client
+        var miniErpSecret = config["Seed:MiniErpClientSecret"];
+        if (!string.IsNullOrWhiteSpace(miniErpSecret) && await manager.FindByClientIdAsync("minierp") is null)
+        {
+            await manager.CreateAsync(new OpenIddictApplicationDescriptor
+            {
+                ClientId = "minierp",
+                ClientSecret = miniErpSecret,
+                DisplayName = "RVM.ERP (MiniERP)",
+                ClientType = OpenIddictConstants.ClientTypes.Confidential,
+                RedirectUris = { new Uri("https://erp.rvmtech.com.br/signin-oidc") },
+                Permissions =
+                {
+                    OpenIddictConstants.Permissions.Endpoints.Authorization,
+                    OpenIddictConstants.Permissions.Endpoints.Token,
+                    OpenIddictConstants.Permissions.GrantTypes.AuthorizationCode,
+                    OpenIddictConstants.Permissions.GrantTypes.RefreshToken,
+                    OpenIddictConstants.Permissions.ResponseTypes.Code,
+                    OpenIddictConstants.Permissions.Scopes.Email,
+                    OpenIddictConstants.Permissions.Scopes.Profile,
+                    OpenIddictConstants.Permissions.Scopes.Roles,
                     OpenIddictConstants.Permissions.Prefixes.Scope + "api"
                 }
             });

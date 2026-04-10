@@ -43,19 +43,20 @@ public static class DependencyInjection
             .AddServer(options =>
             {
                 options.SetAuthorizationEndpointUris("connect/authorize");
-                options.SetTokenEndpointUris("connect/token");
+                options.SetTokenEndpointUris("connect/token", "api/internal/auth/phone-login");
                 options.SetUserInfoEndpointUris("connect/userinfo");
                 options.SetEndSessionEndpointUris("connect/logout");
 
                 options.AllowAuthorizationCodeFlow();
                 options.AllowClientCredentialsFlow();
                 options.AllowRefreshTokenFlow();
+                options.AllowCustomFlow("phone_login");
                 options.RequireProofKeyForCodeExchange();
 
                 options.SetAccessTokenLifetime(TimeSpan.FromMinutes(30));
                 options.SetRefreshTokenLifetime(TimeSpan.FromDays(7));
 
-                options.RegisterScopes("openid", "profile", "email", "api");
+                options.RegisterScopes("openid", "profile", "email", "api", "phone", "roles");
 
                 options.AddDevelopmentEncryptionCertificate();
                 options.AddDevelopmentSigningCertificate();
