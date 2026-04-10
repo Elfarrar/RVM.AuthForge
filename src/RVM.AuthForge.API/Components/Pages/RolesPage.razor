@@ -6,12 +6,19 @@
 
 <h1>Roles</h1>
 
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success")">@_message</div>
+}
+
+<h2>Create Role</h2>
 <div class="add-form">
     <input @bind="_name" placeholder="Role name" class="input-sm" />
     <input @bind="_description" placeholder="Description" class="input-sm" style="width:300px" />
     <button class="btn-sm btn-primary" @onclick="CreateRole">Create</button>
 </div>
 
+<h2>Role List</h2>
 <table class="data-table">
     <thead><tr><th>Name</th><th>Description</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>
@@ -19,9 +26,37 @@
         {
             <tr>
                 <td>@role.Name</td>
-                <td>@role.Description</td>
+                <td>
+                    @if (_editingId == role.Id)
+                    {
+                        <input @bind="_editDescription" class="input-sm" style="width:250px" />
+                    }
+                    else
+                    {
+                        @role.Description
+                    }
+                </td>
                 <td>@role.CreatedAt.ToString("d")</td>
-                <td><button class="btn-sm btn-danger" @onclick="() => Delete(role)">Delete</button></td>
+                <td>
+                    @if (_editingId == role.Id)
+                    {
+                        <button class="btn-sm btn-primary" @onclick="() => SaveEdit(role)">Save</button>
+                        <button class="btn-sm" @onclick="CancelEdit">Cancel</button>
+                    }
+                    else
+                    {
+                        <button class="btn-sm" @onclick="() => StartEdit(role)">Edit</button>
+                    }
+                    @if (_confirmDeleteId == role.Id)
+                    {
+                        <button class="btn-sm btn-danger" @onclick="() => Delete(role)">Confirm</button>
+                        <button class="btn-sm" @onclick="() => _confirmDeleteId = null">Cancel</button>
+                    }
+                    else
+                    {
+                        <button class="btn-sm btn-danger" @onclick="() => _confirmDeleteId = role.Id">Delete</button>
+                    }
+                </td>
             </tr>
         }
     </tbody>
@@ -30,6 +65,11 @@
 @code {
     private List<ApplicationRole> _roles = [];
     private string _name = "", _description = "";
+    private string _message = "";
+    private bool _isError;
+    private Guid? _editingId;
+    private string _editDescription = "";
+    private Guid? _confirmDeleteId;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -38,15 +78,72 @@
 
     private async Task CreateRole()
     {
-        if (string.IsNullOrWhiteSpace(_name)) return;
-        await RoleManager.CreateAsync(new ApplicationRole { Name = _name, Description = _description });
-        _name = ""; _description = "";
+        _message = "";
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _message = "Role name is required.";
+            _isError = true;
+            return;
+        }
+        var result = await RoleManager.CreateAsync(new ApplicationRole { Name = _name, Description = _description });
+        if (result.Succeeded)
+        {
+            _message = $"Role '{_name}' created.";
+            _isError = false;
+            _name = ""; _description = "";
+            await Load();
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+    }
+
+    private void StartEdit(ApplicationRole role)
+    {
+        _editingId = role.Id;
+        _editDescription = role.Description ?? "";
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+        _editDescription = "";
+    }
+
+    private async Task SaveEdit(ApplicationRole role)
+    {
+        role.Description = _editDescription;
+        var result = await RoleManager.UpdateAsync(role);
+        if (result.Succeeded)
+        {
+            _message = $"Role '{role.Name}' updated.";
+            _isError = false;
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+        _editingId = null;
         await Load();
     }
 
     private async Task Delete(ApplicationRole role)
     {
-        await RoleManager.DeleteAsync(role);
+        var result = await RoleManager.DeleteAsync(role);
+        if (result.Succeeded)
+        {
+            _message = $"Role '{role.Name}' deleted.";
+            _isError = false;
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+        _confirmDeleteId = null;
         await Load();
     }
 }

@@ -7,12 +7,28 @@
 
 <h1>Users</h1>
 
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success")">@_message</div>
+}
+
+<h2>Create User</h2>
+<div class="add-form">
+    <input @bind="_newEmail" placeholder="Email" class="input-sm" />
+    <input @bind="_newFullName" placeholder="Full Name" class="input-sm" />
+    <input @bind="_newPassword" type="password" placeholder="Password" class="input-sm" />
+    <input @bind="_newRole" placeholder="Role (optional)" class="input-sm" style="width:120px" />
+    <button class="btn-sm btn-primary" @onclick="CreateUser">Create</button>
+</div>
+
+<h2>User List</h2>
 <div class="search-bar">
     <input @bind="_search" @bind:event="oninput" placeholder="Search by name or email..." class="input-search" />
+    <button class="btn-sm" @onclick="() => LoadPage(1)">Search</button>
 </div>
 
 <table class="data-table">
-    <thead><tr><th>Name</th><th>Email</th><th>Active</th><th>2FA</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Active</th><th>Email Confirmed</th><th>2FA</th><th>Created</th><th>Actions</th></tr></thead>
     <tbody>
         @foreach (var user in _users)
         {
@@ -20,6 +36,7 @@
                 <td>@user.FullName</td>
                 <td>@user.Email</td>
                 <td><span class="@(user.Active ? "status-active" : "status-inactive")">@(user.Active ? "Yes" : "No")</span></td>
+                <td>@(user.EmailConfirmed ? "Yes" : "No")</td>
                 <td>@(user.TwoFactorEnabled ? "Yes" : "No")</td>
                 <td>@user.CreatedAt.ToString("d")</td>
                 <td>
@@ -31,6 +48,15 @@
                     else
                     {
                         <button class="btn-sm btn-danger" @onclick="() => Lock(user)">Lock</button>
+                    }
+                    @if (_confirmDeleteId == user.Id)
+                    {
+                        <button class="btn-sm btn-danger" @onclick="() => DeleteUser(user)">Confirm</button>
+                        <button class="btn-sm" @onclick="() => _confirmDeleteId = null">Cancel</button>
+                    }
+                    else
+                    {
+                        <button class="btn-sm btn-danger" @onclick="() => _confirmDeleteId = user.Id">Delete</button>
                     }
                 </td>
             </tr>
@@ -49,6 +75,10 @@
     private string _search = "";
     private int _page = 1;
     private const int _pageSize = 20;
+    private string _newEmail = "", _newFullName = "", _newPassword = "", _newRole = "";
+    private string _message = "";
+    private bool _isError;
+    private Guid? _confirmDeleteId;
 
     protected override async Task OnInitializedAsync() => await LoadPage(1);
 
@@ -64,6 +94,58 @@
             .Skip((_page - 1) * _pageSize)
             .Take(_pageSize)
             .ToListAsync();
+    }
+
+    private async Task CreateUser()
+    {
+        _message = "";
+        if (string.IsNullOrWhiteSpace(_newEmail) || string.IsNullOrWhiteSpace(_newFullName) || string.IsNullOrWhiteSpace(_newPassword))
+        {
+            _message = "Email, Full Name and Password are required.";
+            _isError = true;
+            return;
+        }
+
+        var user = new ApplicationUser
+        {
+            UserName = _newEmail,
+            Email = _newEmail,
+            FullName = _newFullName,
+            EmailConfirmed = true
+        };
+
+        var result = await UserManager.CreateAsync(user, _newPassword);
+        if (!result.Succeeded)
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_newRole))
+            await UserManager.AddToRoleAsync(user, _newRole);
+
+        _message = $"User '{_newEmail}' created successfully.";
+        _isError = false;
+        _newEmail = ""; _newFullName = ""; _newPassword = ""; _newRole = "";
+        await LoadPage(_page);
+    }
+
+    private async Task DeleteUser(ApplicationUser user)
+    {
+        var result = await UserManager.DeleteAsync(user);
+        if (result.Succeeded)
+        {
+            _message = $"User '{user.Email}' deleted.";
+            _isError = false;
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+        _confirmDeleteId = null;
+        await LoadPage(_page);
     }
 
     private async Task Lock(ApplicationUser user)

@@ -4,8 +4,14 @@
 @using Microsoft.AspNetCore.Identity
 @inject UserManager<ApplicationUser> UserManager
 @inject IAuditLogService AuditLog
+@inject NavigationManager Nav
 
 <h1>User Details</h1>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success")">@_message</div>
+}
 
 @if (_user is null)
 {
@@ -14,17 +20,49 @@
 else
 {
     <div class="detail-card">
-        <div class="detail-row"><strong>Name:</strong> @_user.FullName</div>
         <div class="detail-row"><strong>Email:</strong> @_user.Email</div>
-        <div class="detail-row"><strong>Active:</strong> @(_user.Active ? "Yes" : "No")</div>
-        <div class="detail-row"><strong>Email Confirmed:</strong> @(_user.EmailConfirmed ? "Yes" : "No")</div>
-        <div class="detail-row"><strong>2FA:</strong> @(_user.TwoFactorEnabled ? "Enabled" : "Disabled")</div>
+        <div class="detail-row">
+            <strong>Name:</strong>
+            <input @bind="_editFullName" class="input-sm" style="width:250px" />
+        </div>
+        <div class="detail-row">
+            <strong>Active:</strong>
+            <label class="checkbox-label"><input type="checkbox" @bind="_editActive" /> Active</label>
+        </div>
+        <div class="detail-row">
+            <strong>Email Confirmed:</strong>
+            <span class="@(_user.EmailConfirmed ? "status-active" : "status-inactive")">@(_user.EmailConfirmed ? "Yes" : "No")</span>
+            @if (!_user.EmailConfirmed)
+            {
+                <button class="btn-sm btn-success" style="margin-left:0.5rem" @onclick="ConfirmEmail">Confirm Email</button>
+            }
+        </div>
+        <div class="detail-row">
+            <strong>2FA:</strong>
+            <span>@(_user.TwoFactorEnabled ? "Enabled" : "Disabled")</span>
+            @if (_user.TwoFactorEnabled)
+            {
+                <button class="btn-sm btn-danger" style="margin-left:0.5rem" @onclick="Disable2FA">Disable 2FA</button>
+            }
+        </div>
         <div class="detail-row"><strong>Created:</strong> @_user.CreatedAt.ToString("g")</div>
         <div class="detail-row"><strong>Failed Logins:</strong> @_user.AccessFailedCount</div>
-        @if (_user.LockoutEnd is not null)
+        @if (_user.LockoutEnd is not null && _user.LockoutEnd > DateTimeOffset.UtcNow)
         {
-            <div class="detail-row"><strong>Locked Until:</strong> @_user.LockoutEnd.Value.ToString("g")</div>
+            <div class="detail-row">
+                <strong>Locked Until:</strong> @_user.LockoutEnd.Value.ToString("g")
+                <button class="btn-sm btn-success" style="margin-left:0.5rem" @onclick="Unlock">Unlock</button>
+            </div>
         }
+        <div style="margin-top:0.75rem; display:flex; gap:0.5rem;">
+            <button class="btn-sm btn-primary" @onclick="SaveChanges">Save Changes</button>
+        </div>
+    </div>
+
+    <h2>Reset Password</h2>
+    <div class="add-form">
+        <input @bind="_newPassword" type="password" placeholder="New password" class="input-sm" style="width:250px" />
+        <button class="btn-sm btn-primary" @onclick="ResetPassword">Reset Password</button>
     </div>
 
     <h2>Roles</h2>
@@ -37,6 +75,20 @@ else
     <div class="add-role">
         <input @bind="_newRole" placeholder="Role name" class="input-sm" />
         <button class="btn-sm btn-primary" @onclick="AddRole">Add Role</button>
+    </div>
+
+    <h2>Danger Zone</h2>
+    <div class="detail-card" style="border-color: var(--danger);">
+        @if (_confirmDelete)
+        {
+            <p style="margin-bottom:0.5rem; color:var(--danger);">Are you sure? This cannot be undone.</p>
+            <button class="btn-sm btn-danger" @onclick="DeleteUser">Confirm Delete</button>
+            <button class="btn-sm" @onclick="() => _confirmDelete = false">Cancel</button>
+        }
+        else
+        {
+            <button class="btn-sm btn-danger" @onclick="() => _confirmDelete = true">Delete User</button>
+        }
     </div>
 
     <h2>Recent Activity</h2>
@@ -54,6 +106,10 @@ else
             }
         </tbody>
     </table>
+
+    <div style="margin-top:1.5rem;">
+        <button class="btn-sm" @onclick='() => Nav.NavigateTo("admin/users")'>&#8592; Back to Users</button>
+    </div>
 }
 
 @code {
@@ -63,21 +119,140 @@ else
     private IList<string> _roles = [];
     private List<AuditLogEntry> _auditEntries = [];
     private string _newRole = "";
+    private string _editFullName = "";
+    private bool _editActive;
+    private string _newPassword = "";
+    private bool _confirmDelete;
+    private string _message = "";
+    private bool _isError;
 
     protected override async Task OnInitializedAsync()
     {
         _user = await UserManager.FindByIdAsync(UserId.ToString());
         if (_user is not null)
         {
+            _editFullName = _user.FullName;
+            _editActive = _user.Active;
             _roles = await UserManager.GetRolesAsync(_user);
             _auditEntries = await AuditLog.GetEntriesAsync(userId: UserId.ToString(), pageSize: 20);
+        }
+    }
+
+    private async Task SaveChanges()
+    {
+        if (_user is null) return;
+        _user.FullName = _editFullName;
+        _user.Active = _editActive;
+        var result = await UserManager.UpdateAsync(_user);
+        if (result.Succeeded)
+        {
+            _message = "User updated successfully.";
+            _isError = false;
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+    }
+
+    private async Task ResetPassword()
+    {
+        if (_user is null || string.IsNullOrWhiteSpace(_newPassword)) return;
+        var removeResult = await UserManager.RemovePasswordAsync(_user);
+        if (!removeResult.Succeeded)
+        {
+            _message = string.Join(" ", removeResult.Errors.Select(e => e.Description));
+            _isError = true;
+            return;
+        }
+        var addResult = await UserManager.AddPasswordAsync(_user, _newPassword);
+        if (addResult.Succeeded)
+        {
+            _message = "Password reset successfully.";
+            _isError = false;
+            _newPassword = "";
+        }
+        else
+        {
+            _message = string.Join(" ", addResult.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+    }
+
+    private async Task ConfirmEmail()
+    {
+        if (_user is null) return;
+        var token = await UserManager.GenerateEmailConfirmationTokenAsync(_user);
+        var result = await UserManager.ConfirmEmailAsync(_user, token);
+        if (result.Succeeded)
+        {
+            _message = "Email confirmed.";
+            _isError = false;
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+    }
+
+    private async Task Disable2FA()
+    {
+        if (_user is null) return;
+        var result = await UserManager.SetTwoFactorEnabledAsync(_user, false);
+        if (result.Succeeded)
+        {
+            await UserManager.ResetAuthenticatorKeyAsync(_user);
+            _message = "2FA disabled and authenticator key reset.";
+            _isError = false;
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+    }
+
+    private async Task Unlock()
+    {
+        if (_user is null) return;
+        await UserManager.SetLockoutEndDateAsync(_user, null);
+        await UserManager.ResetAccessFailedCountAsync(_user);
+        _message = "User unlocked.";
+        _isError = false;
+    }
+
+    private async Task DeleteUser()
+    {
+        if (_user is null) return;
+        var result = await UserManager.DeleteAsync(_user);
+        if (result.Succeeded)
+        {
+            Nav.NavigateTo("admin/users");
+        }
+        else
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+            _confirmDelete = false;
         }
     }
 
     private async Task AddRole()
     {
         if (_user is null || string.IsNullOrWhiteSpace(_newRole)) return;
-        await UserManager.AddToRoleAsync(_user, _newRole);
+        var result = await UserManager.AddToRoleAsync(_user, _newRole);
+        if (!result.Succeeded)
+        {
+            _message = string.Join(" ", result.Errors.Select(e => e.Description));
+            _isError = true;
+        }
+        else
+        {
+            _message = $"Role '{_newRole}' added.";
+            _isError = false;
+        }
         _roles = await UserManager.GetRolesAsync(_user);
         _newRole = "";
     }
@@ -87,5 +262,7 @@ else
         if (_user is null) return;
         await UserManager.RemoveFromRoleAsync(_user, role);
         _roles = await UserManager.GetRolesAsync(_user);
+        _message = $"Role '{role}' removed.";
+        _isError = false;
     }
 }

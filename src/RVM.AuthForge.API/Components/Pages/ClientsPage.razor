@@ -4,6 +4,12 @@
 
 <h1>OAuth Clients</h1>
 
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success")">@_message</div>
+}
+
+<h2>Create Client</h2>
 <div class="add-form">
     <input @bind="_clientId" placeholder="Client ID" class="input-sm" />
     <input @bind="_displayName" placeholder="Display Name" class="input-sm" />
@@ -16,25 +22,63 @@
     <button class="btn-sm btn-primary" @onclick="CreateClient">Create</button>
 </div>
 
+<h2>Client List</h2>
 <table class="data-table">
-    <thead><tr><th>Client ID</th><th>Display Name</th><th>Type</th></tr></thead>
+    <thead><tr><th>Client ID</th><th>Display Name</th><th>Type</th><th>Actions</th></tr></thead>
     <tbody>
         @foreach (var client in _clients)
         {
             <tr>
                 <td>@client.ClientId</td>
-                <td>@client.DisplayName</td>
+                <td>
+                    @if (_editingClientId == client.ClientId)
+                    {
+                        <input @bind="_editDisplayName" class="input-sm" style="width:200px" />
+                    }
+                    else
+                    {
+                        @client.DisplayName
+                    }
+                </td>
                 <td>@client.ClientType</td>
+                <td>
+                    @if (_editingClientId == client.ClientId)
+                    {
+                        <div class="add-form" style="margin:0">
+                            <input @bind="_editRedirectUri" placeholder="Redirect URI" class="input-sm" style="width:200px" />
+                            <button class="btn-sm btn-primary" @onclick="() => SaveEdit(client)">Save</button>
+                            <button class="btn-sm" @onclick="CancelEdit">Cancel</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <button class="btn-sm" @onclick="() => StartEdit(client)">Edit</button>
+                        @if (_confirmDeleteId == client.ClientId)
+                        {
+                            <button class="btn-sm btn-danger" @onclick="() => DeleteClient(client)">Confirm</button>
+                            <button class="btn-sm" @onclick='() => _confirmDeleteId = null'>Cancel</button>
+                        }
+                        else
+                        {
+                            <button class="btn-sm btn-danger" @onclick="() => _confirmDeleteId = client.ClientId">Delete</button>
+                        }
+                    }
+                </td>
             </tr>
         }
     </tbody>
 </table>
 
 @code {
-    private record ClientInfo(string? ClientId, string? DisplayName, string? ClientType);
+    private record ClientInfo(string? ClientId, string? DisplayName, string? ClientType, object Instance);
     private List<ClientInfo> _clients = [];
     private string _clientId = "", _displayName = "", _redirectUri = "", _secret = "";
     private bool _confidential;
+    private string _message = "";
+    private bool _isError;
+    private string? _editingClientId;
+    private string _editDisplayName = "", _editRedirectUri = "";
+    private string? _confirmDeleteId;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -46,13 +90,20 @@
             _clients.Add(new ClientInfo(
                 await ClientManager.GetClientIdAsync(client),
                 await ClientManager.GetDisplayNameAsync(client),
-                await ClientManager.GetClientTypeAsync(client)));
+                await ClientManager.GetClientTypeAsync(client),
+                client));
         }
     }
 
     private async Task CreateClient()
     {
-        if (string.IsNullOrWhiteSpace(_clientId)) return;
+        _message = "";
+        if (string.IsNullOrWhiteSpace(_clientId))
+        {
+            _message = "Client ID is required.";
+            _isError = true;
+            return;
+        }
 
         var descriptor = new OpenIddictApplicationDescriptor
         {
@@ -73,7 +124,51 @@
         descriptor.Permissions.Add(OpenIddictConstants.Permissions.ResponseTypes.Code);
 
         await ClientManager.CreateAsync(descriptor);
+        _message = $"Client '{_clientId}' created.";
+        _isError = false;
         _clientId = ""; _displayName = ""; _redirectUri = ""; _secret = "";
+        await Load();
+    }
+
+    private async Task StartEdit(ClientInfo client)
+    {
+        _editingClientId = client.ClientId;
+        _editDisplayName = client.DisplayName ?? "";
+
+        var redirectUris = await ClientManager.GetRedirectUrisAsync(client.Instance);
+        _editRedirectUri = redirectUris.FirstOrDefault() ?? "";
+    }
+
+    private void CancelEdit()
+    {
+        _editingClientId = null;
+        _editDisplayName = "";
+        _editRedirectUri = "";
+    }
+
+    private async Task SaveEdit(ClientInfo client)
+    {
+        var descriptor = new OpenIddictApplicationDescriptor();
+        await ClientManager.PopulateAsync(descriptor, client.Instance);
+
+        descriptor.DisplayName = _editDisplayName;
+        descriptor.RedirectUris.Clear();
+        if (!string.IsNullOrWhiteSpace(_editRedirectUri))
+            descriptor.RedirectUris.Add(new Uri(_editRedirectUri));
+
+        await ClientManager.UpdateAsync(client.Instance, descriptor);
+        _message = $"Client '{client.ClientId}' updated.";
+        _isError = false;
+        _editingClientId = null;
+        await Load();
+    }
+
+    private async Task DeleteClient(ClientInfo client)
+    {
+        await ClientManager.DeleteAsync(client.Instance);
+        _message = $"Client '{client.ClientId}' deleted.";
+        _isError = false;
+        _confirmDeleteId = null;
         await Load();
     }
 }
