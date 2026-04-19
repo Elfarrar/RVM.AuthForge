@@ -10,6 +10,7 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__DefaultConnection=Host=rvmtech-db;Database=rvmauthforge;Username=rvmtech;Password=${POSTGRES_PASSWORD}
       - DataProtection__Directory=/app/data/dataprotection
+      - Seq__ServerUrl=http://187.77.48.215:5341
     volumes:
       - app-data:/app/data
     networks:
