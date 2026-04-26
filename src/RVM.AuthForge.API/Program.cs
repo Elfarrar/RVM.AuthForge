@@ -76,6 +76,29 @@ forwardedHeadersOptions.KnownNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedHeadersOptions);
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "font-src 'self'; " +
+        "img-src 'self' data:; " +
+        "connect-src 'self' wss:; " +
+        "frame-ancestors 'none';";
+    await next();
+});
+
 app.UseSerilogRequestLogging();
 app.UseCors("ReactPortal");
 app.UseMiddleware<CorrelationIdMiddleware>();
