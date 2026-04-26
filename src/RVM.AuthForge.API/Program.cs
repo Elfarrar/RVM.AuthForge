@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using RVM.Common.Security;
 using RVM.AuthForge.Infrastructure;
 using RVM.AuthForge.Infrastructure.Data;
 using RVM.AuthForge.API.Services;
@@ -76,6 +77,12 @@ forwardedHeadersOptions.KnownNetworks.Clear();
 forwardedHeadersOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedHeadersOptions);
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
+app.UseSecurityHeaders();
 app.UseSerilogRequestLogging();
 app.UseCors("ReactPortal");
 app.UseMiddleware<CorrelationIdMiddleware>();
