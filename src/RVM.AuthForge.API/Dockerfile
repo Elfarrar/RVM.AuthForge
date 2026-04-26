@@ -7,6 +7,7 @@ EXPOSE 8081
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
+COPY nuget.config .
 COPY ["src/RVM.AuthForge.API/RVM.AuthForge.API.csproj", "src/RVM.AuthForge.API/"]
 COPY ["src/RVM.AuthForge.Domain/RVM.AuthForge.Domain.csproj", "src/RVM.AuthForge.Domain/"]
 COPY ["src/RVM.AuthForge.Infrastructure/RVM.AuthForge.Infrastructure.csproj", "src/RVM.AuthForge.Infrastructure/"]
